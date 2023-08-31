@@ -14,7 +14,7 @@ import rosbag
 
 IMAGE_FILEEXT = ".png"
 IMAGE_START_INDEX = 0
-IMAGE_TOPICNAME = "/camera/rgb/image_raw/compressed"
+IMAGE_TOPICNAME = "/zed2i/zed_node/left/image_rect_color"  # 960 x 540 image
 
 
 def parse_opt():
@@ -44,8 +44,8 @@ def parse_bag(args):
     bridge = CvBridge()
     for topic, msg, t in bag.read_messages(topics=[IMAGE_TOPICNAME]):
         if topic == IMAGE_TOPICNAME:
-            print(f"Saved image {img_idx}")
-            img = bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="passthrough")
+            print(f"Saving image {img_idx}")
+            img = bridge.imgmsg_to_cv2(msg, "bgr8")
             filename = f'{img_idx:06}' + IMAGE_FILEEXT
             filepath = os.path.join(image_dirpath, filename)
             cv2.imwrite(filepath, img)

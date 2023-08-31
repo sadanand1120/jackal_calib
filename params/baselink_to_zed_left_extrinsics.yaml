@@ -1,0 +1,21 @@
+# Distances in cms, angles in degrees
+# From WCS to Intermediate frame
+T12:
+  T1:
+    X: -9
+    Y: 7.5
+    Z: 74
+
+# From Intermediate frame to CCS
+T23:
+  R1:
+    axis: "Z"
+    alpha: -1
+  R2:
+    axis: "Y"
+    alpha: 1.5
+  R3: # two rotations basically
+    - [0, -1, 0, 0]
+    - [0, 0, -1, 0]
+    - [1, 0, 0, 0]
+    - [0, 0, 0, 1]

@@ -11,10 +11,10 @@ from cv_bridge import CvBridge
 from copy import deepcopy
 import yaml
 
-from spot_calib import SpotCameraCalibration
+from cam_calib import JackalCameraCalibration
 
 
-class SpotLidarCamCalibration:
+class JackalLidarCamCalibration:
     COLMAP = [(0, 0, 0.5385), (0, 0, 0.6154),
               (0, 0, 0.6923), (0, 0, 0.7692),
               (0, 0, 0.8462), (0, 0, 0.9231),
@@ -41,19 +41,18 @@ class SpotLidarCamCalibration:
               (0.8462, 0, 0), (0.7692, 0, 0),
               (0.6923, 0, 0), (0.6154, 0, 0)]
 
-    def __init__(self, resolution=1440, ros_flag=True):
-        self.spot_cam_calib = SpotCameraCalibration(resolution=resolution)
+    def __init__(self, ros_flag=True):
+        self.jackal_cam_calib = JackalCameraCalibration()
         self.latest_img = None
         self.latest_vlp_points = None
         self.ros_flag = ros_flag
-        # NOTE: this is the hypothetical, NOT real spot VLP16 frame
         self.extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_lidar_extrinsics.yaml")
         self.extrinsics_dict = None
         self.load_params()
         if self.ros_flag:
             self.cv_bridge = CvBridge()
-            rospy.Subscriber("/camera/rgb/image_raw/compressed", CompressedImage, self.image_callback, queue_size=1, buff_size=2**32)
-            rospy.Subscriber("/corrected_velodyne_points", PointCloud2, self.pc_callback, queue_size=10)
+            rospy.Subscriber("/zed2i/zed_node/left/image_rect_color/compressed", CompressedImage, self.image_callback, queue_size=1, buff_size=2**32)
+            rospy.Subscriber("/corrected_ouster_points", PointCloud2, self.pc_callback, queue_size=10)
             self.pub = rospy.Publisher("/lidar_cam/compressed", CompressedImage, queue_size=1)
             rospy.Timer(rospy.Duration(1 / 10), self.timer_callback)
 
@@ -78,9 +77,9 @@ class SpotLidarCamCalibration:
         cur_img = deepcopy(self.latest_img)
         cur_vlp_points = deepcopy(self.latest_vlp_points)
         pcs_coords, mask, ccs_dists = self.projectVLPtoPCS(cur_vlp_points)
-        colors = SpotLidarCamCalibration.get_depth_colors(list(ccs_dists.squeeze()))
+        colors = JackalLidarCamCalibration.get_depth_colors(list(ccs_dists.squeeze()))
         for i in range(pcs_coords.shape[0]):
-            cv2.circle(cur_img, tuple(pcs_coords[i, :].astype(np.int32)), radius=2, color=colors[i], thickness=-1)
+            cv2.circle(cur_img, tuple(pcs_coords[i, :].astype(np.int32)), radius=1, color=colors[i], thickness=-1)
         img = cv2.resize(cur_img, None, fx=0.75, fy=0.75)
         msg = CompressedImage()
         msg.header.stamp = rospy.Time.now()
@@ -95,7 +94,7 @@ class SpotLidarCamCalibration:
         dists: list of distances
         Returns: list of colors in BGR format
         """
-        COLMAP = SpotLidarCamCalibration.COLMAP
+        COLMAP = JackalLidarCamCalibration.COLMAP
         colors = []
         for i in range(len(dists)):
             range_val = min(round((dists[i] / 30.0) * 49), 49)
@@ -108,14 +107,14 @@ class SpotLidarCamCalibration:
         """
         Returns the extrinsic matrix (4 x 4) that transforms from WCS to VLP frame
         """
-        T1 = SpotCameraCalibration.get_std_trans(cx=self.extrinsics_dict['T1']['Trans1']['X'] / 100,
-                                                 cy=self.extrinsics_dict['T1']['Trans1']['Y'] / 100,
-                                                 cz=self.extrinsics_dict['T1']['Trans1']['Z'] / 100)
-        T2 = SpotCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot1']['axis'],
-                                               alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot1']['alpha']))
-        T3 = SpotCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot2']['axis'],
-                                               alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot2']['alpha']))
-        return (T2 @ T3) @ T1
+        T1 = JackalCameraCalibration.get_std_trans(cx=self.extrinsics_dict['T1']['Trans1']['X'] / 100,
+                                                   cy=self.extrinsics_dict['T1']['Trans1']['Y'] / 100,
+                                                   cz=self.extrinsics_dict['T1']['Trans1']['Z'] / 100)
+        T2 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot1']['axis'],
+                                                 alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot1']['alpha']))
+        T3 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot2']['axis'],
+                                                 alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot2']['alpha']))
+        return T3 @ T2 @ T1
 
     def projectVLPtoWCS(self, vlp_points):
         """
@@ -124,10 +123,10 @@ class SpotLidarCamCalibration:
         Returns: (N x 3) numpy array of points in WCS
         """
         vlp_points = np.array(vlp_points).astype(np.float64)
-        vlp_points_4d = SpotCameraCalibration.get_homo_from_ordinary(vlp_points)
+        vlp_points_4d = JackalCameraCalibration.get_homo_from_ordinary(vlp_points)
         M_ext = np.linalg.inv(self.get_M_ext())
         wcs_coords_4d = (M_ext @ vlp_points_4d.T).T
-        return SpotCameraCalibration.get_ordinary_from_homo(wcs_coords_4d)
+        return JackalCameraCalibration.get_ordinary_from_homo(wcs_coords_4d)
 
     def projectVLPtoPCS(self, vlp_points, mode="skip"):
         """
@@ -137,8 +136,8 @@ class SpotLidarCamCalibration:
         """
         vlp_points = np.array(vlp_points).astype(np.float64)
         wcs_coords = self.projectVLPtoWCS(vlp_points)
-        ccs_coords = self.spot_cam_calib.projectWCStoCCS(wcs_coords)
-        pcs_coords, mask = self.spot_cam_calib.projectCCStoPCS(ccs_coords, mode=mode)
+        ccs_coords = self.jackal_cam_calib.projectWCStoCCS(wcs_coords)
+        pcs_coords, mask = self.jackal_cam_calib.projectCCStoPCS(ccs_coords, mode=mode)
         ccs_dists = np.linalg.norm(ccs_coords, axis=1).reshape((-1, 1))
         ccs_dists = ccs_dists[mask]
         return pcs_coords, mask, ccs_dists
@@ -146,7 +145,7 @@ class SpotLidarCamCalibration:
 
 if __name__ == "__main__":
     rospy.init_node('lidar_cam_calib_testing', anonymous=False)
-    e = SpotLidarCamCalibration()
+    e = JackalLidarCamCalibration()
     time.sleep(1)
     try:
         rospy.spin()

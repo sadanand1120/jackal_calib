@@ -1,0 +1,13 @@
+# Distances in cms, angles in degrees
+T1:
+  Trans1:
+    X: 7
+    Y: 0
+    Z: 35
+T2:
+  Rot1:
+    axis: "Z"
+    alpha: 0.0
+  Rot2:
+    axis: "X"
+    alpha: -0.4
