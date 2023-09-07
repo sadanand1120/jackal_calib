@@ -78,7 +78,9 @@ class JackalCameraCalibration:
         T3 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T23']['R2']['axis'],
                                                  alpha=np.deg2rad(self.extrinsics_dict['T23']['R2']['alpha']))
         T4 = np.array(self.extrinsics_dict['T23']['R3'])
-        return T4 @ T3 @ T2 @ T1
+        T5 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T23']['R4']['axis'],
+                                                 alpha=np.deg2rad(self.extrinsics_dict['T23']['R4']['alpha']))
+        return T5 @ T4 @ T3 @ T2 @ T1
 
     def projectWCStoPCS(self, wcs_coords, mode="skip"):
         """

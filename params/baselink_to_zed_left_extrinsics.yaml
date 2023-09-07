@@ -13,9 +13,12 @@ T23:
     alpha: -1
   R2:
     axis: "Y"
-    alpha: 1.5
+    alpha: 1.0
   R3: # two rotations basically
     - [0, -1, 0, 0]
     - [0, 0, -1, 0]
     - [1, 0, 0, 0]
     - [0, 0, 0, 1]
+  R4:
+    axis: "Z"
+    alpha: 0.0

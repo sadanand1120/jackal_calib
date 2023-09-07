@@ -3,7 +3,7 @@ T1:
   Trans1:
     X: 7
     Y: 0
-    Z: 35
+    Z: 31
 T2:
   Rot1:
     axis: "Z"
