@@ -54,7 +54,7 @@ class JackalLidarCamCalibration:
             rospy.Subscriber("/zed2i/zed_node/left/image_rect_color/compressed", CompressedImage, self.image_callback, queue_size=1, buff_size=2**32)
             rospy.Subscriber("/corrected_ouster_points", PointCloud2, self.pc_callback, queue_size=10)
             self.pub = rospy.Publisher("/lidar_cam/compressed", CompressedImage, queue_size=1)
-            rospy.Timer(rospy.Duration(1 / 10), self.timer_callback)
+            rospy.Timer(rospy.Duration(1 / 10), lambda event: self.main(self.latest_img, self.latest_vlp_points))
 
     def load_params(self):
         with open(self.extrinsics_filepath, 'r') as f:
@@ -71,21 +71,31 @@ class JackalLidarCamCalibration:
     def image_callback(self, msg):
         self.latest_img = self.cv_bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
-    def timer_callback(self, _):
-        if self.latest_img is None or self.latest_vlp_points is None:
+    def main(self, img, vlp_points, event=None):
+        """
+        img: (H x W x 3) numpy array, cv2 based (BGR)
+        vlp_points: (N x 3) numpy array of points in VLP frame
+        """
+        if img is None or vlp_points is None:
             return
-        cur_img = deepcopy(self.latest_img)
-        cur_vlp_points = deepcopy(self.latest_vlp_points)
+        cur_img = deepcopy(img)
+        cur_vlp_points = deepcopy(vlp_points)
         pcs_coords, mask, ccs_dists = self.projectVLPtoPCS(cur_vlp_points)
         colors = JackalLidarCamCalibration.get_depth_colors(list(ccs_dists.squeeze()))
         for i in range(pcs_coords.shape[0]):
             cv2.circle(cur_img, tuple(pcs_coords[i, :].astype(np.int32)), radius=1, color=colors[i], thickness=-1)
-        img = cv2.resize(cur_img, None, fx=0.75, fy=0.75)
-        msg = CompressedImage()
-        msg.header.stamp = rospy.Time.now()
-        msg.format = "jpeg"
-        msg.data = np.array(cv2.imencode('.jpg', img)[1]).tobytes()
-        self.pub.publish(msg)
+        if self.ros_flag:
+            img2 = cv2.resize(cur_img, None, fx=0.75, fy=0.75)
+            msg = CompressedImage()
+            msg.header.stamp = rospy.Time.now()
+            msg.format = "jpeg"
+            msg.data = np.array(cv2.imencode('.jpg', img2)[1]).tobytes()
+            self.pub.publish(msg)
+        else:
+            cur_img = cv2.resize(cur_img, None, fx=0.75, fy=0.75)
+            img = cv2.resize(img, None, fx=0.75, fy=0.75)
+            side_by_side = np.hstack((img, cur_img))
+            return side_by_side, pcs_coords, cur_vlp_points[mask], np.asarray(ccs_dists.squeeze()).reshape((-1, 1))
 
     @staticmethod
     def get_depth_colors(dists):
@@ -97,9 +107,8 @@ class JackalLidarCamCalibration:
         COLMAP = JackalLidarCamCalibration.COLMAP
         colors = []
         for i in range(len(dists)):
-            range_val = min(round((dists[i] / 30.0) * 49), 49)
-            # TODO: do try and catch here, it showed once coz index out of range
-            color = (255 * COLMAP[50 - range_val][2], 255 * COLMAP[50 - range_val][1], 255 * COLMAP[50 - range_val][0])
+            range_val = max(min(round((dists[i] / 30.0) * 49), 49), 0)
+            color = (255 * COLMAP[49 - range_val][2], 255 * COLMAP[49 - range_val][1], 255 * COLMAP[49 - range_val][0])
             colors.append(color)
         return colors
 
