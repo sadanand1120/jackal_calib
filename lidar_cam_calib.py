@@ -173,6 +173,19 @@ class JackalLidarCamCalibration:
         wcs_coords_4d = (M_ext @ vlp_points_4d.T).T
         return JackalCameraCalibration.get_ordinary_from_homo(wcs_coords_4d)
 
+    @staticmethod
+    def general_project_A_to_B(inp, AtoBmat):
+        """
+        Project inp from A frame to B
+        inp: (N x 3) array of points in A frame
+        AtoBmat: (4 x 4) transformation matrix from A to B
+        Returns: (N x 3) array of points in B frame
+        """
+        inp = np.array(inp).astype(np.float64)
+        inp_4d = JackalCameraCalibration.get_homo_from_ordinary(inp)
+        out_4d = (AtoBmat @ inp_4d.T).T
+        return JackalCameraCalibration.get_ordinary_from_homo(out_4d)
+
     def projectVLPtoPCS(self, vlp_points, mode="skip"):
         """
         Project VLP points to PCS
