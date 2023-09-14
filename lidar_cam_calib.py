@@ -47,12 +47,14 @@ class JackalLidarCamCalibration:
         self.latest_vlp_points = None
         self.ros_flag = ros_flag
         self.extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_lidar_extrinsics.yaml")
+        self._actual_extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_actual_lidar_extrinsics.yaml")
         self.extrinsics_dict = None
+        self._actual_extrinsics_dict = None
         self.load_params()
         if self.ros_flag:
             self.cv_bridge = CvBridge()
             rospy.Subscriber("/zed2i/zed_node/left/image_rect_color/compressed", CompressedImage, self.image_callback, queue_size=1, buff_size=2**32)
-            rospy.Subscriber("/corrected_ouster_points", PointCloud2, self.pc_callback, queue_size=10)
+            rospy.Subscriber("/ouster/points", PointCloud2, self.pc_callback, queue_size=10)
             self.pub = rospy.Publisher("/lidar_cam/compressed", CompressedImage, queue_size=1)
             rospy.Timer(rospy.Duration(1 / 10), lambda event: self.main(self.latest_img, self.latest_vlp_points))
 
@@ -60,13 +62,34 @@ class JackalLidarCamCalibration:
         with open(self.extrinsics_filepath, 'r') as f:
             self.extrinsics_dict = yaml.safe_load(f)
 
+        with open(self._actual_extrinsics_filepath, 'r') as f:
+            self._actual_extrinsics_dict = yaml.safe_load(f)
+
     def pc_callback(self, msg):
         pc_cloud = ros_numpy.point_cloud2.pointcloud2_to_array(msg).reshape((1, -1))
         pc_np = np.zeros((pc_cloud.shape[0], pc_cloud.shape[1], 3), dtype=np.float32)
         pc_np[..., 0] = pc_cloud['x']
         pc_np[..., 1] = pc_cloud['y']
         pc_np[..., 2] = pc_cloud['z']
-        self.latest_vlp_points = pc_np.reshape((-1, 3))
+        latest_vlp_points = pc_np.reshape((-1, 3))
+        self.latest_vlp_points = self._correct_pc(latest_vlp_points)
+
+    def _correct_pc(self, vlp_points):
+        """
+        Corrects actual pc to desired lidar location pc
+        vlp_points: (N x K) numpy array of points in VLP frame
+        returns: (N x K) numpy array of points in (corrected) VLP frame
+        """
+        vlp_points_copy = deepcopy(vlp_points)
+        pc_np_xyz = vlp_points[:, :3].reshape((-1, 3)).astype(np.float64)
+        real_lidar_to_wcs = np.linalg.inv(self._get_actual_M_ext())
+        wcs_to_lidar = self.get_M_ext()
+        real_lidar_to_lidar = wcs_to_lidar @ real_lidar_to_wcs  # lidar_from_real_lidar = lidar_from_wcs @ wcs_from_real_lidar
+        pc_np_xyz_4d = JackalCameraCalibration.get_homo_from_ordinary(pc_np_xyz)
+        lidar_coords_xyz_4d = (real_lidar_to_lidar @ pc_np_xyz_4d.T).T
+        lidar_coords_xyz = JackalCameraCalibration.get_ordinary_from_homo(lidar_coords_xyz_4d)
+        vlp_points_copy[:, :3] = lidar_coords_xyz
+        return vlp_points_copy
 
     def image_callback(self, msg):
         self.latest_img = self.cv_bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="passthrough")
@@ -74,7 +97,7 @@ class JackalLidarCamCalibration:
     def main(self, img, vlp_points, event=None):
         """
         img: (H x W x 3) numpy array, cv2 based (BGR)
-        vlp_points: (N x 3) numpy array of points in VLP frame
+        vlp_points: (N x 3) numpy array of points in (corrected) VLP frame
         """
         if img is None or vlp_points is None:
             return
@@ -123,6 +146,19 @@ class JackalLidarCamCalibration:
                                                  alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot1']['alpha']))
         T3 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot2']['axis'],
                                                  alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot2']['alpha']))
+        return T3 @ T2 @ T1
+
+    def _get_actual_M_ext(self):
+        """
+        Returns the actual extrinsic matrix (4 x 4) that transforms from WCS to real VLP frame
+        """
+        T1 = JackalCameraCalibration.get_std_trans(cx=self._actual_extrinsics_dict['T1']['Trans1']['X'] / 100,
+                                                   cy=self._actual_extrinsics_dict['T1']['Trans1']['Y'] / 100,
+                                                   cz=self._actual_extrinsics_dict['T1']['Trans1']['Z'] / 100)
+        T2 = JackalCameraCalibration.get_std_rot(axis=self._actual_extrinsics_dict['T2']['Rot1']['axis'],
+                                                 alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot1']['alpha']))
+        T3 = JackalCameraCalibration.get_std_rot(axis=self._actual_extrinsics_dict['T2']['Rot2']['axis'],
+                                                 alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot2']['alpha']))
         return T3 @ T2 @ T1
 
     def projectVLPtoWCS(self, vlp_points):
