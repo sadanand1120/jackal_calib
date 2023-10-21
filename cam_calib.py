@@ -29,6 +29,7 @@ Additional info:
     - M_int is constant for a given camera
     - You should NOT directly do M_int multiplication as shown above, but instead use cv2.projectPoints as it takes into account the distortion coefficients as well
     - Sometimes, M_perp * M_ext is combined into a single matrix, called the extrinsic matrix, where then it is (3 x 4) extrinsic matrix
+    - (Corrected) lidar frame is such that it only has z displacement from base_link
 """
 
 import cv2
@@ -40,9 +41,15 @@ from copy import deepcopy
 
 
 class JackalCameraCalibration:
-    def __init__(self):
-        self.intrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), f"params/zed_left_rect_intrinsics.yaml")
-        self.extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_zed_left_extrinsics.yaml")
+    def __init__(self, intrinsics_filepath=None, extrinsics_filepath=None):
+        if intrinsics_filepath is None:
+            self.intrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), f"params/zed_left_rect_intrinsics.yaml")
+        else:
+            self.intrinsics_filepath = intrinsics_filepath
+        if extrinsics_filepath is None:
+            self.extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_zed_left_extrinsics.yaml")
+        else:
+            self.extrinsics_filepath = extrinsics_filepath
         self.intrinsics_dict = None
         self.extrinsics_dict = None
         self.img_height = None
@@ -82,6 +89,19 @@ class JackalCameraCalibration:
                                                  alpha=np.deg2rad(self.extrinsics_dict['T23']['R4']['alpha']))
         return T5 @ T4 @ T3 @ T2 @ T1
 
+    @staticmethod
+    def general_project_A_to_B(inp, AtoBmat):
+        """
+        Project inp from A frame to B
+        inp: (N x 3) array of points in A frame
+        AtoBmat: (4 x 4) transformation matrix from A to B
+        Returns: (N x 3) array of points in B frame
+        """
+        inp = np.array(inp).astype(np.float64)
+        inp_4d = JackalCameraCalibration.get_homo_from_ordinary(inp)
+        out_4d = (AtoBmat @ inp_4d.T).T
+        return JackalCameraCalibration.get_ordinary_from_homo(out_4d)
+
     def projectWCStoPCS(self, wcs_coords, mode="skip"):
         """
         Projects set of points in WCS to PCS.
@@ -97,11 +117,8 @@ class JackalCameraCalibration:
         wcs_coords: (N x 3) array of points in WCS
         Returns: (N x 3) array of points in CCS
         """
-        wcs_coords = np.array(wcs_coords).astype(np.float64)
-        wcs_coords_4d = JackalCameraCalibration.get_homo_from_ordinary(wcs_coords)
         M_ext = self.get_M_ext()
-        ccs_coords_4d = (M_ext @ wcs_coords_4d.T).T
-        return JackalCameraCalibration.get_ordinary_from_homo(ccs_coords_4d)
+        return JackalCameraCalibration.general_project_A_to_B(wcs_coords, M_ext)
 
     def projectCCStoPCS(self, ccs_coords, mode="skip"):
         """
@@ -143,11 +160,8 @@ class JackalCameraCalibration:
         ccs_coords: (N x 3) array of points in CCS
         Returns: (N x 3) array of points in WCS
         """
-        ccs_coords = np.array(ccs_coords).astype(np.float64)
-        ccs_coords_4d = JackalCameraCalibration.get_homo_from_ordinary(ccs_coords)
         M_ext_inv = np.linalg.inv(self.get_M_ext())
-        wcs_coords_4d = (M_ext_inv @ ccs_coords_4d.T).T
-        return JackalCameraCalibration.get_ordinary_from_homo(wcs_coords_4d)
+        return JackalCameraCalibration.general_project_A_to_B(ccs_coords, M_ext_inv)
 
     def projectPCStoWCSground(self, pcs_coords, apply_dist=True, mode="skip"):
         """
@@ -174,7 +188,7 @@ class JackalCameraCalibration:
         zeros = np.zeros((wcs_coords.shape[0], 1))
         wcs_coords_full = np.hstack([wcs_coords, zeros]).reshape((wcs_coords.shape[0], 3))
         ccs_coords_full = self.projectWCStoCCS(wcs_coords_full)
-        ccs_mask = (ccs_coords_full[:, 2] >= 0)
+        ccs_mask = (ccs_coords_full[:, 2] >= 0)  # this ccs_mask calculation is to cross-check if projected wcs points make sense or not
         unified_mask = deepcopy(pcs_mask)
         unified_mask[pcs_mask] = ccs_mask
         return wcs_coords_full[ccs_mask], unified_mask

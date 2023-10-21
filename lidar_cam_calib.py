@@ -10,6 +10,8 @@ import time
 from cv_bridge import CvBridge
 from copy import deepcopy
 import yaml
+from scipy.interpolate import griddata
+from copy import deepcopy
 
 from cam_calib import JackalCameraCalibration
 
@@ -41,13 +43,21 @@ class JackalLidarCamCalibration:
               (0.8462, 0, 0), (0.7692, 0, 0),
               (0.6923, 0, 0), (0.6154, 0, 0)]
 
-    def __init__(self, ros_flag=True):
-        self.jackal_cam_calib = JackalCameraCalibration()
+    def __init__(self, ros_flag=True, lidar_extrinsics_filepath=None, lidar_actual_extrinsics_filepath=None, cam_intrinsics_filepath=None, cam_extrinsics_filepath=None):
+        self.jackal_cam_calib = JackalCameraCalibration(intrinsics_filepath=cam_intrinsics_filepath, extrinsics_filepath=cam_extrinsics_filepath)
         self.latest_img = None
         self.latest_vlp_points = None
         self.ros_flag = ros_flag
-        self.extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_lidar_extrinsics.yaml")
-        self._actual_extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_actual_lidar_extrinsics.yaml")
+        self.img_height = self.jackal_cam_calib.img_height
+        self.img_width = self.jackal_cam_calib.img_width
+        if lidar_extrinsics_filepath is None:
+            self.extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_lidar_extrinsics.yaml")
+        else:
+            self.extrinsics_filepath = lidar_extrinsics_filepath
+        if lidar_actual_extrinsics_filepath is None:
+            self._actual_extrinsics_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "params/baselink_to_actual_lidar_extrinsics.yaml")
+        else:
+            self._actual_extrinsics_filepath = lidar_actual_extrinsics_filepath
         self.extrinsics_dict = None
         self._actual_extrinsics_dict = None
         self.load_params()
@@ -94,6 +104,79 @@ class JackalLidarCamCalibration:
     def image_callback(self, msg):
         self.latest_img = self.cv_bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
+    @staticmethod
+    def plot_points_on_image(img, corresponding_dists, corresponding_pcs_coords, resize=False):
+        """
+        img: cv2 image (BGR) to plot on
+        corresponding_dists: a list of distances / 1d np array of distances
+        corresponding_pcs_coords: N x 2 pixel coordinates corresponding to the distances
+        """
+        if isinstance(corresponding_dists, np.ndarray):
+            corresponding_dists = list(corresponding_dists.squeeze())
+        colors = JackalLidarCamCalibration.get_depth_colors(corresponding_dists)
+        for i in range(corresponding_pcs_coords.shape[0]):
+            cv2.circle(img, tuple(corresponding_pcs_coords[i, :].astype(np.int32)), radius=1, color=colors[i], thickness=-1)
+        if resize:
+            img = cv2.resize(img, None, fx=0.75, fy=0.75)
+        return img
+
+    @staticmethod
+    def interp(a, b, x, method="nearest"):
+        y = griddata(a, b, x, method=method)
+        # for coord, value in zip(a, b):
+        #     index = np.where((x == coord).all(axis=1))[0]
+        #     y[index] = value
+        return y
+
+    def double_interp(self, a, b, x, do_nearest=True):
+        y = self.interp(a, b, x, method="cubic")
+        single_mask = np.isnan(y[:, 0]).squeeze()
+        if do_nearest:
+            x2 = x[~single_mask]
+            y2 = y[~single_mask]
+            y = self.interp(a=x2, b=y2, x=x, method="nearest")
+            return y, np.ones(x.shape[0], dtype=bool)
+        else:
+            return y[~single_mask], ~single_mask
+
+    def projectPCtoImage(self, pc_np, img):
+        """
+        img: (H x W x 3) numpy array, cv2 based (BGR)
+        pc_np: (N x 3) numpy array of points in VLP frame
+        """
+        side_by_side, pcs_coords, vlp_points, ccs_dists = self.main(img, pc_np)
+        return side_by_side, pcs_coords, vlp_points, ccs_dists
+
+    def projectPCtoImageFull(self, pc_np, img, ret_imgs=False, do_nearest=True):
+        """
+        img: (H x W x 3) numpy array, cv2 based (BGR)
+        pc_np: (N x 3) numpy array of points in VLP frame
+        """
+        _, corresponding_pcs_coords, corresponding_vlp_coords, corresponding_ccs_dists = self.projectPCtoImage(pc_np, img)
+        all_ys, all_xs = np.meshgrid(np.arange(self.img_height), np.arange(self.img_width))
+        all_pixel_locs = np.stack((all_xs.flatten(), all_ys.flatten()), axis=-1)  # K x 2
+        all_vlp_coords, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_vlp_coords, x=all_pixel_locs, do_nearest=do_nearest)
+
+        all_ccs_dists, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_ccs_dists, x=all_pixel_locs, do_nearest=do_nearest)
+        all_pixel_locs  = all_pixel_locs[interp_mask]
+        all_vlp_zs = all_vlp_coords[:, 2].reshape((-1, 1))
+        corresponding_vlp_zs = corresponding_vlp_coords[:, 2].reshape((-1, 1))
+        if ret_imgs:
+            img_vlp_ccs_dists = deepcopy(img)
+            img_full_ccs_dists = deepcopy(img)
+            img_vlp_vlp_zs = deepcopy(img)
+            img_full_vlp_zs = deepcopy(img)
+            img_vlp_ccs_dists = JackalLidarCamCalibration.plot_points_on_image(img_vlp_ccs_dists, corresponding_ccs_dists, corresponding_pcs_coords, resize=True)
+            img_full_ccs_dists = JackalLidarCamCalibration.plot_points_on_image(img_full_ccs_dists, all_ccs_dists, all_pixel_locs, resize=True)
+            img_vlp_vlp_zs = JackalLidarCamCalibration.plot_points_on_image(img_vlp_vlp_zs, corresponding_vlp_zs, corresponding_pcs_coords, resize=True)
+            img_full_vlp_zs = JackalLidarCamCalibration.plot_points_on_image(img_full_vlp_zs, all_vlp_zs, all_pixel_locs, resize=True)
+            side_by_side_ccs_dists = np.hstack((img_vlp_ccs_dists, img_full_ccs_dists))
+            side_by_side_vlp_zs = np.hstack((img_vlp_vlp_zs, img_full_vlp_zs))
+            full_img = np.vstack((side_by_side_ccs_dists, side_by_side_vlp_zs))
+            imgs = [full_img, img_vlp_ccs_dists, img_full_ccs_dists, img_vlp_vlp_zs, img_full_vlp_zs]
+            return all_pixel_locs, all_vlp_coords, all_ccs_dists, all_vlp_zs, interp_mask, imgs
+        return all_pixel_locs, all_vlp_coords, all_ccs_dists, all_vlp_zs, interp_mask
+
     def main(self, img, vlp_points, event=None):
         """
         img: (H x W x 3) numpy array, cv2 based (BGR)
@@ -104,9 +187,7 @@ class JackalLidarCamCalibration:
         cur_img = deepcopy(img)
         cur_vlp_points = deepcopy(vlp_points)
         pcs_coords, mask, ccs_dists = self.projectVLPtoPCS(cur_vlp_points)
-        colors = JackalLidarCamCalibration.get_depth_colors(list(ccs_dists.squeeze()))
-        for i in range(pcs_coords.shape[0]):
-            cv2.circle(cur_img, tuple(pcs_coords[i, :].astype(np.int32)), radius=1, color=colors[i], thickness=-1)
+        cur_img = JackalLidarCamCalibration.plot_points_on_image(cur_img, ccs_dists, pcs_coords)
         if self.ros_flag:
             img2 = cv2.resize(cur_img, None, fx=0.75, fy=0.75)
             msg = CompressedImage()
@@ -167,24 +248,8 @@ class JackalLidarCamCalibration:
         vlp_points: (N x 3) numpy array of points in VLP frame
         Returns: (N x 3) numpy array of points in WCS
         """
-        vlp_points = np.array(vlp_points).astype(np.float64)
-        vlp_points_4d = JackalCameraCalibration.get_homo_from_ordinary(vlp_points)
-        M_ext = np.linalg.inv(self.get_M_ext())
-        wcs_coords_4d = (M_ext @ vlp_points_4d.T).T
-        return JackalCameraCalibration.get_ordinary_from_homo(wcs_coords_4d)
-
-    @staticmethod
-    def general_project_A_to_B(inp, AtoBmat):
-        """
-        Project inp from A frame to B
-        inp: (N x 3) array of points in A frame
-        AtoBmat: (4 x 4) transformation matrix from A to B
-        Returns: (N x 3) array of points in B frame
-        """
-        inp = np.array(inp).astype(np.float64)
-        inp_4d = JackalCameraCalibration.get_homo_from_ordinary(inp)
-        out_4d = (AtoBmat @ inp_4d.T).T
-        return JackalCameraCalibration.get_ordinary_from_homo(out_4d)
+        M_ext_inv = np.linalg.inv(self.get_M_ext())
+        return JackalCameraCalibration.general_project_A_to_B(vlp_points, M_ext_inv)
 
     def projectVLPtoPCS(self, vlp_points, mode="skip"):
         """
@@ -199,6 +264,45 @@ class JackalLidarCamCalibration:
         ccs_dists = np.linalg.norm(ccs_coords, axis=1).reshape((-1, 1))
         ccs_dists = ccs_dists[mask]
         return pcs_coords, mask, ccs_dists
+
+    def projectPCStoWCSusingZ(self, corresponding_pcs_coords, corresponding_vlp_zs, apply_dist=True, mode="skip"):
+        """
+        Projects set of points in PCS to WCS, using z information from lidar.
+        corresponding_pcs_coords: (N x 2) array of points in PCS
+        corresponding_vlp_zs: (N x 1) array of z heights (i.e., +Z axis) in (corrected) VLP frame
+        Returns: (N x 3) array of points in WCS, and a mask to indicate which pixel locs were kept during FOV bounding
+        """
+        # Converting the corresponding_vlp_zs to corresponding_wcs_zs
+        zeros = np.zeros((corresponding_vlp_zs.shape[0], 2))
+        pseudo_vlp_coords = np.hstack([zeros, corresponding_vlp_zs])  # Note VLP frame is only z translated from WCS frame
+        pseudo_wcs_coords = self.projectVLPtoWCS(pseudo_vlp_coords)
+        corresponding_wcs_zs = pseudo_wcs_coords[:, 2].reshape((-1, 1))
+
+        corresponding_pcs_coords = np.array(corresponding_pcs_coords).astype(np.float64)
+        K = self.jackal_cam_calib.intrinsics_dict['camera_matrix']  # 3 x 3
+        d = self.jackal_cam_calib.intrinsics_dict['dist_coeffs']
+        R = np.eye(3)
+        undistorted_pcs_coords = cv2.undistortPoints(corresponding_pcs_coords.reshape(1, -1, 2), K, d, R=R, P=K)
+        undistorted_pcs_coords = np.swapaxes(undistorted_pcs_coords, 0, 1).squeeze().reshape((-1, 2))
+        undistorted_pcs_coords, pcs_mask = JackalCameraCalibration.to_image_fov_bounds(undistorted_pcs_coords, self.img_width, self.img_height, mode=mode)
+        if apply_dist:
+            corresponding_pcs_coords = undistorted_pcs_coords
+        pcs_coords_3d = JackalCameraCalibration.get_homo_from_ordinary(corresponding_pcs_coords)
+        pcs_coords_3d_T = pcs_coords_3d.T  # 3 x N
+        M_ext = self.jackal_cam_calib.get_M_ext()  # 4 x 4
+        M_ext_short = M_ext[:, [0, 1, 3]][:-1, :].reshape((3, 3))
+        M_col3 = M_ext[:, [2]][:-1, :].reshape((3, 1))
+        wcs_zs = corresponding_wcs_zs.T  # 1 x N
+        lhs = pcs_coords_3d_T - K @ M_col3 @ wcs_zs
+        rhs_mat = K @ M_ext_short
+        wcs_coords_3d = (np.linalg.inv(rhs_mat) @ lhs).T  # N x 3, Note this has x, y, 1
+        wcs_coords = JackalCameraCalibration.get_ordinary_from_homo(wcs_coords_3d)  # N x 2, this has x, y
+        wcs_coords_full = np.hstack([wcs_coords, corresponding_wcs_zs]).reshape((wcs_coords.shape[0], 3))
+        ccs_coords_full = self.jackal_cam_calib.projectWCStoCCS(wcs_coords_full)
+        ccs_mask = (ccs_coords_full[:, 2] >= 0)  # this ccs_mask calculation is to cross-check if projected wcs points make sense or not
+        unified_mask = deepcopy(pcs_mask)
+        unified_mask[pcs_mask] = ccs_mask
+        return wcs_coords_full[ccs_mask], unified_mask
 
 
 if __name__ == "__main__":
