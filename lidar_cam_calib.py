@@ -128,8 +128,8 @@ class JackalLidarCamCalibration:
         #     y[index] = value
         return y
 
-    def double_interp(self, a, b, x, do_nearest=True):
-        y = self.interp(a, b, x, method="cubic")
+    def double_interp(self, a, b, x, do_nearest=True, firstmethod="linear"):
+        y = self.interp(a, b, x, method=firstmethod)
         single_mask = np.isnan(y[:, 0]).squeeze()
         if do_nearest:
             x2 = x[~single_mask]
@@ -147,7 +147,7 @@ class JackalLidarCamCalibration:
         side_by_side, pcs_coords, vlp_points, ccs_dists = self.main(img, pc_np)
         return side_by_side, pcs_coords, vlp_points, ccs_dists
 
-    def projectPCtoImageFull(self, pc_np, img, ret_imgs=False, do_nearest=True):
+    def projectPCtoImageFull(self, pc_np, img, ret_imgs=False, do_nearest=True, firstmethod="linear"):
         """
         img: (H x W x 3) numpy array, cv2 based (BGR)
         pc_np: (N x 3) numpy array of points in VLP frame
@@ -155,9 +155,9 @@ class JackalLidarCamCalibration:
         _, corresponding_pcs_coords, corresponding_vlp_coords, corresponding_ccs_dists = self.projectPCtoImage(pc_np, img)
         all_ys, all_xs = np.meshgrid(np.arange(self.img_height), np.arange(self.img_width))
         all_pixel_locs = np.stack((all_xs.flatten(), all_ys.flatten()), axis=-1)  # K x 2
-        all_vlp_coords, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_vlp_coords, x=all_pixel_locs, do_nearest=do_nearest)
+        all_vlp_coords, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_vlp_coords, x=all_pixel_locs, do_nearest=do_nearest, firstmethod=firstmethod)
 
-        all_ccs_dists, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_ccs_dists, x=all_pixel_locs, do_nearest=do_nearest)
+        all_ccs_dists, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_ccs_dists, x=all_pixel_locs, do_nearest=do_nearest, firstmethod=firstmethod)
         all_pixel_locs  = all_pixel_locs[interp_mask]
         all_vlp_zs = all_vlp_coords[:, 2].reshape((-1, 1))
         corresponding_vlp_zs = corresponding_vlp_coords[:, 2].reshape((-1, 1))
