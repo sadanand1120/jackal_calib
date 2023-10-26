@@ -6,8 +6,11 @@ T1:
     Z: 31
 T2:
   Rot1:
-    axis: "Z"
-    alpha: 0.0
+    axis: "Y"
+    alpha: -0.8
   Rot2:
     axis: "X"
-    alpha: -0.4
+    alpha: 0.0
+  Rot3:
+    axis: "Z"
+    alpha: -0.5

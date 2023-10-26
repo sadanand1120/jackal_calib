@@ -158,7 +158,7 @@ class JackalLidarCamCalibration:
         all_vlp_coords, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_vlp_coords, x=all_pixel_locs, do_nearest=do_nearest, firstmethod=firstmethod)
 
         all_ccs_dists, interp_mask = self.double_interp(a=corresponding_pcs_coords, b=corresponding_ccs_dists, x=all_pixel_locs, do_nearest=do_nearest, firstmethod=firstmethod)
-        all_pixel_locs  = all_pixel_locs[interp_mask]
+        all_pixel_locs = all_pixel_locs[interp_mask]
         all_vlp_zs = all_vlp_coords[:, 2].reshape((-1, 1))
         corresponding_vlp_zs = corresponding_vlp_coords[:, 2].reshape((-1, 1))
         if ret_imgs:
@@ -227,7 +227,9 @@ class JackalLidarCamCalibration:
                                                  alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot1']['alpha']))
         T3 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot2']['axis'],
                                                  alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot2']['alpha']))
-        return T3 @ T2 @ T1
+        T4 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot3']['axis'],
+                                                 alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot3']['alpha']))
+        return T4 @ T3 @ T2 @ T1
 
     def _get_actual_M_ext(self):
         """
@@ -240,7 +242,9 @@ class JackalLidarCamCalibration:
                                                  alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot1']['alpha']))
         T3 = JackalCameraCalibration.get_std_rot(axis=self._actual_extrinsics_dict['T2']['Rot2']['axis'],
                                                  alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot2']['alpha']))
-        return T3 @ T2 @ T1
+        T4 = JackalCameraCalibration.get_std_rot(axis=self._actual_extrinsics_dict['T2']['Rot3']['axis'],
+                                                 alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot3']['alpha']))
+        return T4 @ T3 @ T2 @ T1
 
     def projectVLPtoWCS(self, vlp_points):
         """
