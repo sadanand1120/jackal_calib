@@ -147,7 +147,7 @@ class JackalLidarCamCalibration:
         side_by_side, pcs_coords, vlp_points, ccs_dists = self.main(img, pc_np)
         return side_by_side, pcs_coords, vlp_points, ccs_dists
 
-    def projectPCtoImageFull(self, pc_np, img, ret_imgs=False, do_nearest=True, firstmethod="linear"):
+    def projectPCtoImageFull(self, pc_np, img, ret_imgs=False, do_nearest=True, firstmethod="linear", resize=True):
         """
         img: (H x W x 3) numpy array, cv2 based (BGR)
         pc_np: (N x 3) numpy array of points in VLP frame
@@ -166,10 +166,10 @@ class JackalLidarCamCalibration:
             img_full_ccs_dists = deepcopy(img)
             img_vlp_vlp_zs = deepcopy(img)
             img_full_vlp_zs = deepcopy(img)
-            img_vlp_ccs_dists = JackalLidarCamCalibration.plot_points_on_image(img_vlp_ccs_dists, corresponding_ccs_dists, corresponding_pcs_coords, resize=True)
-            img_full_ccs_dists = JackalLidarCamCalibration.plot_points_on_image(img_full_ccs_dists, all_ccs_dists, all_pixel_locs, resize=True)
-            img_vlp_vlp_zs = JackalLidarCamCalibration.plot_points_on_image(img_vlp_vlp_zs, corresponding_vlp_zs, corresponding_pcs_coords, resize=True)
-            img_full_vlp_zs = JackalLidarCamCalibration.plot_points_on_image(img_full_vlp_zs, all_vlp_zs, all_pixel_locs, resize=True)
+            img_vlp_ccs_dists = JackalLidarCamCalibration.plot_points_on_image(img_vlp_ccs_dists, corresponding_ccs_dists, corresponding_pcs_coords, resize=resize)
+            img_full_ccs_dists = JackalLidarCamCalibration.plot_points_on_image(img_full_ccs_dists, all_ccs_dists, all_pixel_locs, resize=resize)
+            img_vlp_vlp_zs = JackalLidarCamCalibration.plot_points_on_image(img_vlp_vlp_zs, corresponding_vlp_zs, corresponding_pcs_coords, resize=resize)
+            img_full_vlp_zs = JackalLidarCamCalibration.plot_points_on_image(img_full_vlp_zs, all_vlp_zs, all_pixel_locs, resize=resize)
             side_by_side_ccs_dists = np.hstack((img_vlp_ccs_dists, img_full_ccs_dists))
             side_by_side_vlp_zs = np.hstack((img_vlp_vlp_zs, img_full_vlp_zs))
             full_img = np.vstack((side_by_side_ccs_dists, side_by_side_vlp_zs))
