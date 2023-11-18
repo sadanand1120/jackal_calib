@@ -3,14 +3,14 @@ T1:
   Trans1:
     X: 7
     Y: 0
-    Z: 31
+    Z: 34
 T2:
   Rot1:
-    axis: "Y"
-    alpha: -0.8
+    axis: "Z"
+    alpha: -0.6
   Rot2:
     axis: "X"
-    alpha: 0.0
+    alpha: -0.2
   Rot3:
-    axis: "Z"
-    alpha: -0.5
+    axis: "Y"
+    alpha: -0.7
