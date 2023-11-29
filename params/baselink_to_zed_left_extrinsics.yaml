@@ -2,23 +2,23 @@
 # From WCS to Intermediate frame
 T12:
   T1:
-    X: -9
-    Y: 7.5
-    Z: 74
+    X: 33
+    Y: 0
+    Z: 73
 
 # From Intermediate frame to CCS
 T23:
   R1:
-    axis: "Z"
-    alpha: -1
-  R2:
     axis: "Y"
-    alpha: 1.0
-  R3: # two rotations basically
+    alpha: 14
+  R2: # two rotations basically
     - [0, -1, 0, 0]
     - [0, 0, -1, 0]
     - [1, 0, 0, 0]
     - [0, 0, 0, 1]
+  R3:
+    axis: "Y"
+    alpha: 1
   R4:
     axis: "Z"
-    alpha: 0.0
+    alpha: -0.95

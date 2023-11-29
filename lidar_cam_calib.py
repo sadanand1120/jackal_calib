@@ -120,7 +120,7 @@ class JackalLidarCamCalibration:
         for i in range(corresponding_pcs_coords.shape[0]):
             cv2.circle(img, tuple(corresponding_pcs_coords[i, :].astype(np.int32)), radius=1, color=colors[i], thickness=-1)
         if resize:
-            img = cv2.resize(img, None, fx=0.75, fy=0.75)
+            img = cv2.resize(img, None, fx=0.35, fy=0.35)
         return img
 
     @staticmethod
@@ -232,7 +232,7 @@ class JackalLidarCamCalibration:
                                                  alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot2']['alpha']))
         T4 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T2']['Rot3']['axis'],
                                                  alpha=np.deg2rad(self.extrinsics_dict['T2']['Rot3']['alpha']))
-        return T4 @ T3 @ T2 @ T1
+        return T4 @ (T2 @ T3) @ T1
 
     def _get_actual_M_ext(self):
         """
@@ -247,7 +247,7 @@ class JackalLidarCamCalibration:
                                                  alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot2']['alpha']))
         T4 = JackalCameraCalibration.get_std_rot(axis=self._actual_extrinsics_dict['T2']['Rot3']['axis'],
                                                  alpha=np.deg2rad(self._actual_extrinsics_dict['T2']['Rot3']['alpha']))
-        return T4 @ T3 @ T2 @ T1
+        return T4 @ (T2 @ T3) @ T1
 
     def projectVLPtoWCS(self, vlp_points):
         """

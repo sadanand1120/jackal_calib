@@ -6,11 +6,11 @@ T1:
     Z: 35
 T2:
   Rot1:
-    axis: "Z"
+    axis: "Y"
     alpha: 0.0
   Rot2:
-    axis: "X"
+    axis: "Z"
     alpha: 0.0
   Rot3:
-    axis: "Y"
+    axis: "X"
     alpha: 0.0

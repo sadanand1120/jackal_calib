@@ -82,9 +82,9 @@ class JackalCameraCalibration:
         # Transforms from Intermediate frame to CCS
         T2 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T23']['R1']['axis'],
                                                  alpha=np.deg2rad(self.extrinsics_dict['T23']['R1']['alpha']))
-        T3 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T23']['R2']['axis'],
-                                                 alpha=np.deg2rad(self.extrinsics_dict['T23']['R2']['alpha']))
-        T4 = np.array(self.extrinsics_dict['T23']['R3'])
+        T3 = np.array(self.extrinsics_dict['T23']['R2'])
+        T4 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T23']['R3']['axis'],
+                                                 alpha=np.deg2rad(self.extrinsics_dict['T23']['R3']['alpha']))
         T5 = JackalCameraCalibration.get_std_rot(axis=self.extrinsics_dict['T23']['R4']['axis'],
                                                  alpha=np.deg2rad(self.extrinsics_dict['T23']['R4']['alpha']))
         return T5 @ T4 @ T3 @ T2 @ T1
