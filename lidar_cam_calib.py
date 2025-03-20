@@ -13,10 +13,19 @@ import yaml
 from scipy.interpolate import griddata
 from copy import deepcopy
 
-if __name__ == "__main__":
+
+try:
     from cam_calib import JackalCameraCalibration
-else:
+except ImportError:
+    pass
+try:
     from .cam_calib import JackalCameraCalibration
+except ImportError:
+    pass
+try:
+    from jackal_calib.cam_calib import JackalCameraCalibration
+except ImportError:
+    pass
 
 
 class JackalLidarCamCalibration:
