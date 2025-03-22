@@ -267,7 +267,7 @@ class JackalLidarCamCalibration:
         M_ext_inv = np.linalg.inv(self.get_M_ext())
         return JackalCameraCalibration.general_project_A_to_B(vlp_points, M_ext_inv)
 
-    def projectVLPtoPCS(self, vlp_points, mode="skip"):
+    def projectVLPtoPCS(self, vlp_points, mode="skip", ret_zs=False):
         """
         Project VLP points to PCS
         vlp_points: (N x 3) numpy array of points in VLP frame
@@ -279,6 +279,10 @@ class JackalLidarCamCalibration:
         pcs_coords, mask = self.jackal_cam_calib.projectCCStoPCS(ccs_coords, mode=mode)
         ccs_dists = np.linalg.norm(ccs_coords, axis=1).reshape((-1, 1))
         ccs_dists = ccs_dists[mask]
+        if ret_zs:
+            ccs_zs = ccs_coords[:, 2].reshape((-1, 1))
+            ccs_zs = ccs_zs[mask]
+            return pcs_coords, mask, ccs_dists, ccs_zs
         return pcs_coords, mask, ccs_dists
 
     def projectPCStoWCSusingZ(self, corresponding_pcs_coords, corresponding_vlp_zs, apply_dist=True, mode="skip"):
